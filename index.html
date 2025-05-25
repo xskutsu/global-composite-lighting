@@ -1,234 +1,422 @@
-    <!DOCTYPE html>
-    <html lang="en">
+<!DOCTYPE html>
+<html lang="en">
 
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Global Composite Lighting</title>
-        <style>
-            body {
-                background-color: #101020;
-                margin: 0;
-                padding: 0;
-                width: 100vw;
-                height: 100vh;
-                display: flex;
-                justify-content: center;
-                align-items: center;
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Global Composite Lighting with Settings</title>
+    <style>
+        body {
+            background-color: #101020;
+            color: #f0f0f0;
+            margin: 0;
+            padding: 0;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: monospace, sans-serif;
+            overflow: hidden;
+        }
+
+        canvas {
+            border: 1px solid #333333;
+        }
+
+        #settings-menu {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background-color: #2C2C3A;
+            color: #F0F0F0;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 15px #00000080;
+            width: 320px;
+            z-index: 1000;
+            max-height: calc(100vh - 40px);
+            overflow-y: auto;
+        }
+
+        #settings-menu h3 {
+            margin-top: 0;
+            color: #a0a0ff;
+            text-align: center;
+            border-bottom: 1px solid #444455;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+        }
+
+        .setting-item {
+            margin-bottom: 18px;
+        }
+
+        .setting-item label {
+            display: block;
+            margin-bottom: 6px;
+            font-size: 0.9em;
+            color: #cccccc;
+        }
+
+        .setting-item .control-row {
+            display: flex;
+            align-items: center;
+        }
+
+        .setting-item .value-display {
+            min-width: 35px;
+            text-align: right;
+            font-size: 0.9em;
+            color: #E0E0E0;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="settings-menu">
+        <h3>Settings</h3>
+        <div class="setting-item">
+            <label for="playerLightRadius">Player Light Radius:</label>
+            <div class="control-row">
+                <input type="range" id="playerLightRadius" min="50" max="700" value="200">
+                <span id="playerLightRadiusValue" class="value-display">200</span>
+            </div>
+        </div>
+        <div class="setting-item">
+            <label for="playerLightColor">Player Light Color:</label>
+            <div class="control-row">
+                <input type="color" id="playerLightColor" value="#0000FF">
+            </div>
+        </div>
+        <div class="setting-item">
+            <label for="playerFriction">Player Friction:</label>
+            <div class="control-row">
+                <input type="range" id="playerFriction" min="0.80" max="0.99" step="0.01" value="0.95">
+                <span id="playerFrictionValue" class="value-display">0.95</span>
+            </div>
+        </div>
+        <hr style="border-color: #444455; margin: 20px 0;">
+        <div class="setting-item">
+            <label for="lightFallofStart">Light Falloff Start:</label>
+            <div class="control-row">
+                <input type="range" id="lightFallofStart" min="0" max="1" value="0.15" step="0.01">
+                <span id="lightFallofStartValue" class="value-display">0.15</span>
+            </div>
+        </div>
+        <div class="setting-item">
+            <label for="dullEntities">Dull Entities:</label>
+            <div class="control-row">
+                <input type="range" id="dullEntities" min="0" max="50" value="10">
+                <span id="dullEntitiesValue" class="value-display">10</span>
+            </div>
+        </div>
+        <div class="setting-item">
+            <label for="lightEntities">Light Entities:</label>
+            <div class="control-row">
+                <input type="range" id="lightEntities" min="0" max="20" value="4">
+                <span id="lightEntitiesValue" class="value-display">4</span>
+            </div>
+        </div>
+        <div class="setting-item">
+            <label for="lightEntityLightRadius">Light Entity Light Radius:</label>
+            <div class="control-row">
+                <input type="range" id="lightEntityLightRadius" min="20" max="300" value="100">
+                <span id="lightEntityLightRadiusValue" class="value-display">100</span>
+            </div>
+        </div>
+        <button id="resetSimulationButton">Apply & Reset Entities</button>
+    </div>
+
+    <script>
+        const canvasElement = document.createElement("canvas");
+        canvasElement.width = 900;
+        canvasElement.height = 900;
+        document.body.appendChild(canvasElement);
+
+        const config = {
+            lightFallofStart: 0.15,
+            dullEntities: 10,
+            lightEntities: 4,
+            lightEntityLightRadius: 100,
+            player: {
+                lightRadius: 200,
+                lightColor: "#0000FF",
+                friction: 0.95
             }
-        </style>
-    </head>
+        };
 
-    <body>
-        <script>
-            const canvasElement = document.createElement("canvas");
-            canvasElement.width = 900;
-            canvasElement.height = 900;
-            document.body.appendChild(canvasElement);
+        class Light {
+            static canvas = new OffscreenCanvas(canvasElement.width, canvasElement.height);
+            static ctx = this.canvas.getContext("2d", { desynchronized: true, willReadFrequently: false });
+            static index = 0;
+            static instances = new Map();
+            constructor(x, y, radius, color) {
+                this.index = Light.index++;
+                this.x = x;
+                this.y = y;
+                this.radius = radius;
+                this.color = color;
+                Light.instances.set(this.index, this);
+            }
 
-            class Light {
-                static canvas = new OffscreenCanvas(canvasElement.width, canvasElement.height);
-                static ctx = this.canvas.getContext("2d", { desynchronized: true, willReadFrequently: false });
-                static index = 0;
-                static instances = new Map();
-                constructor(x, y, radius, color) {
-                    this.index = Light.index++;
-                    this.x = x;
-                    this.y = y;
-                    this.radius = radius;
-                    this.color = color;
-                    Light.instances.set(this.index, this);
+            destroy() {
+                Light.instances.delete(this.index);
+            }
+
+            static draw(ctx) {
+                this.ctx.globalCompositeOperation = "source-over";
+                this.ctx.fillStyle = "#000000";
+                this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+                this.ctx.globalCompositeOperation = "lighter";
+                for (const light of this.instances.values()) {
+                    const gradient = this.ctx.createRadialGradient(light.x, light.y, 0, light.x, light.y, light.radius);
+                    gradient.addColorStop(config.lightFallofStart, light.color);
+                    gradient.addColorStop(1, "#00000000");
+                    this.ctx.fillStyle = gradient;
+                    this.ctx.beginPath();
+                    this.ctx.arc(light.x, light.y, light.radius, 0, Math.PI * 2);
+                    this.ctx.fill();
                 }
 
-                destroy() {
-                    Light.instances.delete(this.index);
-                }
+                ctx.globalCompositeOperation = "multiply";
+                ctx.drawImage(this.canvas, 0, 0);
+                ctx.globalCompositeOperation = "source-over";
+            }
+        }
 
-                static draw(ctx) {
-                    this.ctx.globalCompositeOperation = "source-over";
-                    this.ctx.fillStyle = "#000000";
-                    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+        class Entity {
+            static index = 0;
+            static instances = new Map();
+            constructor(x, y, radius, color) {
+                this.index = Entity.index++;
+                this.x = x;
+                this.y = y;
+                this.velocityX = 0;
+                this.velocityY = 0;
+                this.friction = 1;
+                this.radius = radius;
+                this.color = color;
+                this.light = null;
+                Entity.instances.set(this.index, this);
+            }
 
-                    this.ctx.globalCompositeOperation = "lighter";
-                    for (const light of this.instances.values()) {
-                        const gradient = this.ctx.createRadialGradient(light.x, light.y, 0, light.x, light.y, light.radius);
-                        gradient.addColorStop(0, light.color);
-                        gradient.addColorStop(1, "#00000000");
-                        this.ctx.fillStyle = gradient;
-                        this.ctx.beginPath();
-                        this.ctx.arc(light.x, light.y, light.radius, 0, Math.PI * 2);
-                        this.ctx.fill();
-                    }
-                    
-                    ctx.globalCompositeOperation = "multiply";
-                    ctx.drawImage(this.canvas, 0, 0);
-                    ctx.globalCompositeOperation = "source-over";
+            destroy() {
+                Entity.instances.delete(this.index);
+                if (this.light !== null) {
+                    this.light.destroy();
                 }
             }
 
-            class Entity {
-                static index = 0;
-                static instances = new Map();
-                constructor(x, y, radius, color) {
-                    this.index = Entity.index++;
-                    this.x = x;
-                    this.y = y;
-                    this.velocityX = 0;
-                    this.velocityY = 0;
-                    this.friction = 1;
-                    this.radius = radius;
-                    this.color = color;
-                    this.light = null;
-                    Entity.instances.set(this.index, this);
+            update(deltaTime) {
+                this.x += this.velocityX * deltaTime;
+                this.y += this.velocityY * deltaTime;
+                this.velocityX *= this.friction;
+                this.velocityY *= this.friction;
+
+                if (this.x < this.radius) {
+                    this.x = this.radius;
+                    this.velocityX = -this.velocityX;
+                } else if (this.x > canvasElement.width - this.radius) {
+                    this.x = canvasElement.width - this.radius;
+                    this.velocityX = -this.velocityX;
+                }
+                if (this.y < this.radius) {
+                    this.y = this.radius;
+                    this.velocityY = -this.velocityY;
+                } else if (this.y > canvasElement.height - this.radius) {
+                    this.y = canvasElement.height - this.radius;
+                    this.velocityY = -this.velocityY;
                 }
 
-                destroy() {
-                    Entity.instances.delete(this.index);
-                    if (this.light !== null) {
-                        this.light.destroy();
-                    }
-                }
-
-                update(deltaTime) {
-                    this.x += this.velocityX * deltaTime;
-                    this.y += this.velocityY * deltaTime;
-                    this.velocityX *= this.friction;
-                    this.velocityY *= this.friction;
-                    
-                    if (this.x < this.radius) {
-                        this.x = this.radius;
-                        this.velocityX = -this.velocityX;
-                    } else if (this.x > canvasElement.width - this.radius) {
-                        this.x = canvasElement.width - this.radius;
-                        this.velocityX = -this.velocityX;
-                    }
-                    if (this.y < this.radius) {
-                        this.y = this.radius;
-                        this.velocityY = -this.velocityY;
-                    } else if (this.y > canvasElement.height - this.radius) {
-                        this.y = canvasElement.height - this.radius;
-                        this.velocityY = -this.velocityY;
-                    }
-
-                    if (this.light !== null) {
-                        this.light.x = this.x;
-                        this.light.y = this.y;
-                    }
-                }
-
-                static draw(ctx, deltaTime) {
-                    for (const entity of this.instances.values()) {
-                        entity.update(deltaTime);
-
-                        ctx.fillStyle = entity.color;
-                        ctx.beginPath();
-                        ctx.arc(entity.x, entity.y, entity.radius, 0, Math.PI * 2);
-                        ctx.fill();
-                    }
+                if (this.light !== null) {
+                    this.light.x = this.x;
+                    this.light.y = this.y;
                 }
             }
 
-            for (let i = 0; i < 10; i++) {
+            static draw(ctx, deltaTime) {
+                for (const entity of this.instances.values()) {
+                    entity.update(deltaTime);
+
+                    ctx.fillStyle = entity.color;
+                    ctx.beginPath();
+                    ctx.arc(entity.x, entity.y, entity.radius, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+        }
+
+        const player = new Entity(canvasElement.width / 2, canvasElement.height / 2, 20, "#FFFFFF");
+        player.friction = config.player.friction;
+        player.light = new Light(player.x, player.y, config.player.lightRadius, config.player.lightColor);
+
+        function populateEntities() {
+            const entitiesToDelete = [];
+            for (const [key, entity] of Entity.instances) {
+                if (entity !== player) {
+                    entitiesToDelete.push(key);
+                }
+            }
+            entitiesToDelete.forEach(key => {
+                const entity = Entity.instances.get(key);
+                if (entity) entity.destroy();
+            });
+
+            for (let i = 0; i < config.dullEntities; i++) {
                 const entity = new Entity(canvasElement.width * Math.random(), canvasElement.height * Math.random(), 10, `#303030`);
                 const angle = Math.random() * Math.PI * 2;
                 entity.velocityX = Math.cos(angle) * 100;
                 entity.velocityY = Math.sin(angle) * 100;
             }
 
-            for (let i = 0; i < 4; i++) {
+            for (let i = 0; i < config.lightEntities; i++) {
                 const entity = new Entity(canvasElement.width * Math.random(), canvasElement.height * Math.random(), 15, `#FF0000`);
                 const angle = Math.random() * Math.PI * 2;
                 entity.velocityX = Math.cos(angle) * 100;
                 entity.velocityY = Math.sin(angle) * 100;
-                entity.light = new Light(entity.x, entity.y, 100, `#FF0000`);
+                entity.light = new Light(entity.x, entity.y, config.lightEntityLightRadius, `#FF0000`);
             }
+        }
 
-            const player = new Entity(canvasElement.width / 2, canvasElement.height / 2, 20, "#FFFFFF");
-            player.friction = 0.95;
-            player.light = new Light(player.x, player.y, 200, `#0000FF`);
+        populateEntities();
 
-            let commands = 0;
-            const COMMAND_UP = 1 << 0;
-            const COMMAND_DOWN = 1 << 1;
-            const COMMAND_LEFT = 1 << 2;
-            const COMMAND_RIGHT = 1 << 3;
-            window.addEventListener("keydown", (e) => {
-                switch (e.key) {
-                    case "ArrowUp":
-                        commands |= COMMAND_UP;
-                        break;
-                    case "ArrowDown":
-                        commands |= COMMAND_DOWN;
-                        break;
-                    case "ArrowLeft":
-                        commands |= COMMAND_LEFT;
-                        break;
-                    case "ArrowRight":
-                        commands |= COMMAND_RIGHT;
-                        break;
-                }
-            });
-            window.addEventListener("keyup", (e) => {
-                switch (e.key) {
-                    case "ArrowUp":
-                        commands &= ~COMMAND_UP;
-                        break;
-                    case "ArrowDown":
-                        commands &= ~COMMAND_DOWN;
-                        break;
-                    case "ArrowLeft":
-                        commands &= ~COMMAND_LEFT;
-                        break;
-                    case "ArrowRight":
-                        commands &= ~COMMAND_RIGHT;
-                        break;
-                }
-            });
-
-            const ctx = canvasElement.getContext("2d", { alpha: false, desynchronized: true, willReadFrequently: false });
-            ctx.imageSmoothingEnabled = true;
-
-            let lastTimestamp = performance.now();
-
-            function drawBackground() {
-                ctx.fillStyle = "#505050";
-                ctx.fillRect(0, 0, canvasElement.width, canvasElement.height);
-
-                ctx.strokeStyle = "#202020";
-                ctx.lineWidth = 1;
-                for (let x = 0; x <= canvasElement.width; x += 40) {
-                    ctx.beginPath();
-                    ctx.moveTo(x, 0);
-                    ctx.lineTo(x, canvasElement.height);
-                    ctx.stroke();
-                }
-                for (let y = 0; y <= canvasElement.height; y += 40) {
-                    ctx.beginPath();
-                    ctx.moveTo(0, y);
-                    ctx.lineTo(canvasElement.width, y);
-                    ctx.stroke();
-                }
+        let commands = 0;
+        const COMMAND_UP = 1 << 0;
+        const COMMAND_DOWN = 1 << 1;
+        const COMMAND_LEFT = 1 << 2;
+        const COMMAND_RIGHT = 1 << 3;
+        window.addEventListener("keydown", (e) => {
+            if (e.target.closest("#settings-menu")) return;
+            switch (e.key) {
+                case "ArrowUp": case "w": commands |= COMMAND_UP; break;
+                case "ArrowDown": case "s": commands |= COMMAND_DOWN; break;
+                case "ArrowLeft": case "a": commands |= COMMAND_LEFT; break;
+                case "ArrowRight": case "d": commands |= COMMAND_RIGHT; break;
             }
-
-            function drawAnimationFrame(timestamp) {
-                const deltaTime = (timestamp - lastTimestamp) / 1000;
-                lastTimestamp = timestamp;
-
-                player.velocityX += commands & COMMAND_RIGHT ? 25 : commands & COMMAND_LEFT ? -25 : 0;
-                player.velocityY += commands & COMMAND_DOWN ? 25 : commands & COMMAND_UP ? -25 : 0;
-
-                ctx.clearRect(0, 0, canvasElement.width, canvasElement.height);
-                drawBackground();
-            
-                Entity.draw(ctx, deltaTime);
-                
-                Light.draw(ctx);
-
-                requestAnimationFrame(drawAnimationFrame);
+        });
+        window.addEventListener("keyup", (e) => {
+            if (e.target.closest("#settings-menu")) return;
+            switch (e.key) {
+                case "ArrowUp": case "w": commands &= ~COMMAND_UP; break;
+                case "ArrowDown": case "s": commands &= ~COMMAND_DOWN; break;
+                case "ArrowLeft": case "a": commands &= ~COMMAND_LEFT; break;
+                case "ArrowRight": case "d": commands &= ~COMMAND_RIGHT; break;
             }
+        });
+
+        const ctx = canvasElement.getContext("2d", { alpha: false, desynchronized: true, willReadFrequently: false });
+        ctx.imageSmoothingEnabled = true;
+
+        let lastTimestamp = performance.now();
+
+        function drawBackground() {
+            ctx.fillStyle = "#505050";
+            ctx.fillRect(0, 0, canvasElement.width, canvasElement.height);
+
+            ctx.strokeStyle = "#202020";
+            ctx.lineWidth = 1;
+            for (let x = 0; x <= canvasElement.width; x += 40) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, canvasElement.height);
+                ctx.stroke();
+            }
+            for (let y = 0; y <= canvasElement.height; y += 40) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(canvasElement.width, y);
+                ctx.stroke();
+            }
+        }
+
+        function drawAnimationFrame(timestamp) {
+            const deltaTime = (timestamp - lastTimestamp) / 1000;
+            lastTimestamp = timestamp;
+
+            player.velocityX += commands & COMMAND_RIGHT ? 25 : commands & COMMAND_LEFT ? -25 : 0;
+            player.velocityY += commands & COMMAND_DOWN ? 25 : commands & COMMAND_UP ? -25 : 0;
+
+            ctx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+            drawBackground();
+
+            Entity.draw(ctx, deltaTime);
+
+            Light.draw(ctx);
 
             requestAnimationFrame(drawAnimationFrame);
-        </script>
-    </body>
+        }
 
-    </html>
+        requestAnimationFrame(drawAnimationFrame);
+
+        const playerLightRadiusSlider = document.getElementById("playerLightRadius");
+        const playerLightRadiusValue = document.getElementById("playerLightRadiusValue");
+        const playerLightColorPicker = document.getElementById("playerLightColor");
+        const playerFrictionSlider = document.getElementById("playerFriction");
+        const playerFrictionValue = document.getElementById("playerFrictionValue");
+        const lightEntityLightRadiusSlider = document.getElementById("lightEntityLightRadius");
+        const lightEntityLightRadiusValue = document.getElementById("lightEntityLightRadiusValue");
+        const lightFallofStartSlider = document.getElementById("lightFallofStart");
+        const lightFallofStartValue = document.getElementById("lightFallofStartValue");
+        const dullEntitiesSlider = document.getElementById("dullEntities");
+        const dullEntitiesValue = document.getElementById("dullEntitiesValue");
+        const lightEntitiesSlider = document.getElementById("lightEntities");
+        const lightEntitiesValue = document.getElementById("lightEntitiesValue");
+        const resetButton = document.getElementById("resetSimulationButton");
+        playerLightRadiusSlider.value = config.player.lightRadius;
+        playerLightRadiusValue.textContent = config.player.lightRadius;
+        playerLightColorPicker.value = config.player.lightColor;
+        playerFrictionSlider.value = config.player.friction;
+        playerFrictionValue.textContent = config.player.friction;
+        lightEntityLightRadiusSlider.value = config.lightEntityLightRadius;
+        lightEntityLightRadiusValue.textContent = config.lightEntityLightRadius;
+        lightFallofStartSlider.value = config.lightFallofStart;
+        lightFallofStartValue.textContent = config.lightFallofStart;
+        dullEntitiesSlider.value = config.dullEntities;
+        dullEntitiesValue.textContent = config.dullEntities;
+        lightEntitiesSlider.value = config.lightEntities;
+        lightEntitiesValue.textContent = config.lightEntities;
+        playerLightRadiusSlider.addEventListener("input", (e) => {
+            const value = parseFloat(e.target.value);
+            player.light.radius = value;
+            config.player.lightRadius = value;
+            playerLightRadiusValue.textContent = value;
+        });
+        playerLightColorPicker.addEventListener("input", event => {
+            player.light.color = event.target.value;
+            config.player.lightColor = event.target.value;
+        });
+        playerFrictionSlider.addEventListener("input", event => {
+            const value = parseFloat(event.target.value);
+            player.friction = value;
+            config.player.friction = value;
+            playerFrictionValue.textContent = value;
+        });
+        lightEntityLightRadiusSlider.addEventListener("input", event => {
+            const value = parseFloat(event.target.value);
+            config.lightEntityLightRadius = value;
+            lightEntityLightRadiusValue.textContent = value;
+            for (const entity of Entity.instances.values()) {
+                if (entity !== player && entity.light && entity.color === "#FF0000") {
+                    entity.light.radius = value;
+                }
+            }
+        });
+        lightFallofStartSlider.addEventListener("input", event => {
+            config.lightFallofStart = parseFloat(event.target.value);
+            lightFallofStartValue.textContent = config.lightFallofStart;
+        });
+        dullEntitiesSlider.addEventListener("input", event => {
+            config.dullEntities = parseInt(event.target.value);
+            dullEntitiesValue.textContent = config.dullEntities;
+        });
+        lightEntitiesSlider.addEventListener("input", event => {
+            config.lightEntities = parseInt(event.target.value);
+            lightEntitiesValue.textContent = config.lightEntities;
+        });
+        resetButton.addEventListener("click", populateEntities);
+    </script>
+</body>
+
+</html>
