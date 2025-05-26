@@ -1,0 +1,2 @@
+Add some sort of traced lighting / culling
+Make this a functional library maybe
